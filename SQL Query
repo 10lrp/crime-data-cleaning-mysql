@@ -1,0 +1,309 @@
+-- Data Cleaning Done Right!
+
+-- 1. Create new table so the raw table we can use as a comparasion
+CREATE TABLE crime_cln
+LIKE crime_incidents_messy;
+
+INSERT crime_cln
+SELECT *
+FROM crime_incidents_messy;
+
+-- 2. Remove duplicates
+WITH duplicate_cte AS (
+SELECT 
+	*, 
+	ROW_NUMBER() OVER (PARTITION BY incident_id) AS ROW_NUM
+    FROM crime_cln
+    )
+    
+SELECT *
+FROM duplicate_cte
+WHERE ROW_NUM > 1
+
+ALTER TABLE crime_cln
+ADD COLUMN row_id INT AUTO_INCREMENT PRIMARY KEY;
+
+WITH duplicate_cte AS (
+    SELECT
+        row_id,
+        ROW_NUMBER() OVER (
+            PARTITION BY incident_id
+            ORDER BY row_id
+        ) AS ROW_NUM
+    FROM crime_cln
+)
+DELETE c
+FROM crime_cln AS c
+JOIN duplicate_cte AS d
+    ON c.row_id = d.row_id
+WHERE d.ROW_NUM > 1;
+
+-- 3. Standardization data and handle missing value 
+SELECT
+    COUNT(*) AS total_rows,
+    SUM(num_arrests IS NULL) AS null_values,
+    SUM(TRIM(num_arrests) = '') AS empty_values
+FROM crime_cln;
+
+UPDATE crime_cln
+SET num_arrests = NULL
+WHERE TRIM(num_arrests) = '';
+
+SELECT *
+FROM crime_cln
+LIMIT 15;
+
+SELECT
+    COUNT(*) AS total_rows,
+    SUM(victim_gender IS NULL) AS null_values,
+    SUM(TRIM(victim_gender) = '') AS empty_values
+FROM crime_cln;
+
+UPDATE crime_cln
+SET victim_gender = NULL
+WHERE TRIM(victim_gender) = '';
+
+UPDATE crime_cln
+SET
+    crime_type = NULLIF(LOWER(TRIM(crime_type)), ''),
+    district = NULLIF(LOWER(TRIM(district)), ''),
+    city = NULLIF(LOWER(TRIM(city)), ''),
+    state = NULLIF(LOWER(TRIM(state)), ''),
+    suspect_gender = NULLIF(LOWER(TRIM(suspect_gender)), ''),
+    suspect_race = NULLIF(LOWER(TRIM(suspect_race)), ''),
+    victim_gender = NULLIF(LOWER(TRIM(victim_gender)), ''),
+    weapon_used = NULLIF(LOWER(TRIM(weapon_used)), ''),
+    severity = NULLIF(LOWER(TRIM(severity)), ''),
+    case_status = NULLIF(LOWER(TRIM(case_status)), ''),
+    resolution = NULLIF(LOWER(TRIM(resolution)), ''),
+    reported_online = NULLIF(LOWER(TRIM(reported_online)), '');
+    
+UPDATE crime_cln
+SET
+    suspect_first_name = LOWER(REGEXP_REPLACE(TRIM(suspect_first_name), '[[:space:]]+', ' ')),
+    victim_first_name = LOWER(REGEXP_REPLACE(TRIM(victim_first_name), '[[:space:]]+', ' ')),
+    officer_first_name = LOWER(REGEXP_REPLACE(TRIM(officer_first_name), '[[:space:]]+', ' ')),
+	  suspect_last_name = LOWER(REGEXP_REPLACE(TRIM(suspect_last_name), '[[:space:]]+', ' ')),
+    victim_last_name = LOWER(REGEXP_REPLACE(TRIM( victim_last_name), '[[:space:]]+', ' ')),
+    officer_last_name = LOWER(REGEXP_REPLACE(TRIM(officer_last_name), '[[:space:]]+', ' '));
+
+UPDATE crime_cln
+SET state = UPPER(state);
+
+SELECT reported_online, COUNT(*)
+FROM crime_cln
+GROUP BY reported_online
+ORDER BY COUNT(*) ASC;
+
+UPDATE crime_cln
+SET crime_type = 
+	CASE 
+    WHEN crime_type LIKE 'ass%' THEN 'assault'
+    WHEN crime_type LIKE 'bul%' THEN 'bulglary'
+    WHEN crime_type LIKE 'arm%' THEN 'armed robbery'
+    WHEN crime_type LIKE 'ars%' THEN 'arson'
+    WHEN crime_type LIKE 'b&%' THEN 'breaking & entering'
+    WHEN crime_type LIKE 'bat%' THEN 'assault'
+    WHEN crime_type LIKE 'cyb%' THEN 'cyber crime'
+    WHEN crime_type LIKE 'd.u%' THEN 'DUII'
+    WHEN crime_type LIKE 'dom%' THEN 'domestic violence'
+    WHEN crime_type LIKE 'drug%' THEN 'drug offense'
+    WHEN crime_type LIKE 'drunk dr%' THEN 'DUII'
+    WHEN crime_type LIKE 'dui%' THEN 'DUII'
+    WHEN crime_type LIKE 'dv%' THEN 'DUII'
+    WHEN crime_type LIKE 'dw%' THEN 'DUII'
+    WHEN crime_type LIKE 'frau%' THEN 'fraudulent activity'
+    WHEN crime_type LIKE 'hom%' THEN 'homocide'
+    WHEN crime_type LIKE 'kid%' THEN 'kidnapping'
+    WHEN crime_type LIKE 'onl%' THEN 'fraudulent activity'
+    WHEN crime_type LIKE 'rob%' THEN 'robbery'
+    WHEN crime_type LIKE 'sa%' THEN 'sexual assault'
+    WHEN crime_type LIKE 'sex%' THEN 'sexual assault'
+    WHEN crime_type LIKE 'lar%' THEN 'theft'
+    WHEN crime_type LIKE 'theft/%' THEN 'theft'
+    WHEN crime_type LIKE 'tres%' THEN 'trespassing'
+    WHEN crime_type LIKE 'van%' THEN 'vandalism'
+    ELSE crime_type END;
+
+UPDATE crime_cln
+SET district = 
+	CASE 
+    WHEN district LIKE 'cen%' THEN 'central'
+    WHEN district LIKE 'eas%' THEN 'east'
+    WHEN district LIKE 'mid%' THEN 'midtown'
+    WHEN district = 'nor' THEN 'north'
+    WHEN district = 'sou' THEN 'south'
+    WHEN district LIKE 'we%' THEN 'west'
+    ELSE district END;
+    
+UPDATE crime_cln
+SET victim_gender = 
+	CASE 
+    WHEN victim_gender LIKE 'f%' THEN 'female'
+    WHEN victim_gender LIKE 'm%' THEN 'male'
+    WHEN victim_gender LIKE 'unk%' THEN 'other'
+    WHEN victim_gender LIKE 'n/%' THEN NULL
+    ELSE victim_gender END;
+
+UPDATE crime_cln
+SET suspect_gender = 
+	CASE 
+    WHEN suspect_gender LIKE 'f%' THEN 'female'
+    WHEN suspect_gender LIKE 'm%' THEN 'male'
+    WHEN suspect_gender LIKE 'unk%' THEN 'other'
+    WHEN suspect_gender LIKE 'n/%' THEN NULL
+    ELSE suspect_gender END;
+    
+UPDATE crime_cln
+SET suspect_race = 
+	CASE 
+    WHEN suspect_race LIKE 'n/%' THEN NULL
+    WHEN suspect_race LIKE 'unk%' THEN 'other'
+    ELSE suspect_race END;
+    
+UPDATE crime_cln
+SET severity = 
+	CASE 
+    WHEN severity = 1 THEN 'low'
+    WHEN severity = 2 THEN 'medium'
+    WHEN severity = 3 THEN 'high'
+    WHEN severity = 4 THEN 'critical'
+    WHEN severity LIKE 'cri%' THEN 'critical'
+    WHEN severity LIKE 'med%' THEN 'medium'
+    ELSE severity END;
+    
+UPDATE crime_cln
+SET reported_online = 
+	CASE 
+    WHEN reported_online = 1 THEN 'true'
+    WHEN reported_online = 0 THEN 'false'
+    WHEN reported_online LIKE 'n%' THEN 'false'
+    WHEN reported_online LIKE 'y%' THEN 'true'
+    ELSE reported_online END;
+    
+SELECT
+    incident_datetime,
+    CASE
+        WHEN incident_datetime REGEXP '^[0-9]{2}/[0-9]{2}/[0-9]{4} '
+        THEN STR_TO_DATE(
+            incident_datetime,
+            '%m/%d/%Y %H:%i:%s'
+        )
+
+        WHEN incident_datetime REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2} '
+        THEN STR_TO_DATE(
+            incident_datetime,
+            '%Y-%m-%d %H:%i:%s'
+        )
+
+        WHEN incident_datetime REGEXP '^[0-9]{2}-[0-9]{2}-[0-9]{4} '
+        THEN STR_TO_DATE(
+            incident_datetime,
+            '%d-%m-%Y %H:%i:%s'
+        )
+		WHEN incident_datetime REGEXP '^[0-9]{2}-[0-9]{2}-[0-9]{4}$'
+		THEN STR_TO_DATE(
+			incident_datetime, 
+            '%d-%m-%Y')
+        ELSE NULL
+    END AS cleaned_datetime
+FROM crime_cln; 
+
+UPDATE crime_cln
+SET incident_datetime =
+	CASE 
+		WHEN incident_datetime REGEXP '^[0-9]{2}/[0-9]{2}/[0-9]{4} '
+        THEN STR_TO_DATE(
+            incident_datetime,
+            '%m/%d/%Y %H:%i:%s'
+        )
+
+        WHEN incident_datetime REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2} '
+        THEN STR_TO_DATE(
+            incident_datetime,
+            '%Y-%m-%d %H:%i:%s'
+        )
+
+        WHEN incident_datetime REGEXP '^[0-9]{2}-[0-9]{2}-[0-9]{4} '
+        THEN STR_TO_DATE(
+            incident_datetime,
+            '%d-%m-%Y %H:%i:%s'
+        )
+		WHEN incident_datetime REGEXP '^[0-9]{2}-[0-9]{2}-[0-9]{4}$'
+		THEN STR_TO_DATE(
+			incident_datetime, 
+            '%d-%m-%Y')
+        ELSE NULL
+    END;
+    
+UPDATE crime_cln
+SET victim_phone = NULL
+WHERE UPPER(TRIM(victim_phone)) IN ('N/A', 'NA', 'UNKNOWN', '');
+
+UPDATE crime_cln
+SET victim_phone = REPLACE(victim_phone, '-', '')
+WHERE victim_phone IS NOT NULL;
+
+UPDATE crime_cln
+SET weapon_used = 'none'
+WHERE weapon_used = 'n/a';
+
+SELECT *
+FROM crime_cln
+LIMIT 10;
+
+SELECT num_arrests, COUNT(*)
+FROM crime_cln
+GROUP BY num_arrests;
+
+UPDATE crime_cln
+SET case_status = 
+	CASE 
+    WHEN case_status LIKE 'pen%' THEN 'pending'
+    WHEN case_status LIKE 'inve%' THEN 'under investigation'
+    WHEN case_status LIKE 'n/%' THEN NULL
+    ELSE case_status END;
+    
+UPDATE crime_cln
+SET resolution = 
+	CASE 
+    WHEN resolution LIKE 'war%' THEN 'warning issued'
+    WHEN resolution LIKE 'arr%' THEN 'arrest made'
+    WHEN resolution LIKE 'cas%' THEN 'dismissed'
+    WHEN resolution LIKE 'n/%' THEN NULL 
+    ELSE resolution END;
+    
+
+-- 4. Identify the outlier and invalid values 
+SELECT suspect_age, COUNT(*)
+FROM crime_cln
+GROUP BY suspect_age
+ORDER BY COUNT(*) DESC;
+
+UPDATE crime_cln
+SET suspect_age = ABS(suspect_age)
+WHERE suspect_age <0;
+
+UPDATE crime_cln
+SET victim_age = ABS(victim_age)
+WHERE victim_age <0;
+
+UPDATE crime_cln
+SET suspect_age = NULL 
+WHERE suspect_age > 100;
+
+UPDATE crime_cln
+SET victim_age = NULL 
+WHERE victim_age > 100;
+
+UPDATE crime_cln
+SET num_arrests = ABS(num_arrests)
+WHERE num_arrests < 0;
+
+-- 5. Change data type
+ALTER TABLE crime_cln
+MODIFY COLUMN incident_datetime DATETIME,
+MODIFY COLUMN suspect_age INT,
+MODIFY COLUMN badge_number VARCHAR(20),
+MODIFY COLUMN num_arrests INT,
+MODIFY COLUMN property_loss_usd DECIMAL(12,2);
